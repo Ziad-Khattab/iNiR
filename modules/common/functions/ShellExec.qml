@@ -48,11 +48,14 @@ Singleton {
             systemd_run="$1"
             desc="$2"
             shift 2
+            app_name=$(basename "$1" 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')
+            [ -z "$app_name" ] && app_name="app"
+            unit_name="app-\${app_name}-\${RANDOM}"
             if [ -x "$systemd_run" ]; then
                 if [ -n "$desc" ]; then
-                    "$systemd_run" --user --scope --quiet --collect --property="Description=$desc" -- "$@" && exit 0
+                    "$systemd_run" --user --scope --unit="$unit_name" --quiet --collect --property="Description=$desc" -- "$@" && exit 0
                 else
-                    "$systemd_run" --user --scope --quiet --collect -- "$@" && exit 0
+                    "$systemd_run" --user --scope --unit="$unit_name" --quiet --collect -- "$@" && exit 0
                 fi
             fi
             exec "$@"
