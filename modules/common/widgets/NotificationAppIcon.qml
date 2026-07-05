@@ -55,7 +55,7 @@ MaterialShape { // App icon
             id: appIconImage
             implicitSize: root.appIconSize
             asynchronous: true
-            source: Quickshell.iconPath(root.appIcon, "image-missing")
+            source: AppSearch.resolveIcon(root.appIcon, "dialog-information")
         }
     }
     Loader {
@@ -106,7 +106,7 @@ MaterialShape { // App icon
                 sourceComponent: IconImage {
                     implicitSize: root.smallAppIconSize
                     asynchronous: true
-                    source: Quickshell.iconPath(root.appIcon, "image-missing")
+                    source: AppSearch.resolveIcon(root.appIcon, "dialog-information")
                 }
             }
         }
