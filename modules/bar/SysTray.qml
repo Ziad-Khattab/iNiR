@@ -1,10 +1,12 @@
 import qs.modules.common
 import qs.modules.common.widgets
 import qs.modules.common.functions
+import qs.services
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Hyprland
+import Quickshell.Wayland
 import Quickshell.Services.SystemTray
 
 Item {
@@ -50,9 +52,23 @@ Item {
     function isValidItem(item) {
         return item && item.id;
     }
-    
+
+    // Hide Wine tray icons whose client window is currently shown on screen
+    // (patch module 04): once the icon->character identity is learned, the
+    // icon only appears when that client is minimized/hidden to tray.
+    function isVisibleButTrayable(item) {
+        if (!TrayService.isWineTrayItem(item)) return false;
+        // Manager: single instance, identified by its window title
+        for (const tl of ToplevelManager.toplevels.values) {
+            const title = tl.title ?? "";
+            if (title.startsWith("Manager v") && !tl.minimized) return true;
+        }
+        return TrayService.identityWindowVisible(item);
+    }
+
     property list<var> itemsInUserList: SystemTray.items.values.filter(i => {
         if (!isValidItem(i)) return false;
+        if (isVisibleButTrayable(i)) return false;
         const id = (i.id || "").toLowerCase();
         const title = (i.title || "").toLowerCase();
         const isSpotify = id.indexOf("spotify") !== -1 || title.indexOf("spotify") !== -1;
@@ -61,6 +77,7 @@ Item {
     })
     property list<var> itemsNotInUserList: SystemTray.items.values.filter(i => {
         if (!isValidItem(i)) return false;
+        if (isVisibleButTrayable(i)) return false;
         const id = (i.id || "").toLowerCase();
         const title = (i.title || "").toLowerCase();
         const isSpotify = id.indexOf("spotify") !== -1 || title.indexOf("spotify") !== -1;

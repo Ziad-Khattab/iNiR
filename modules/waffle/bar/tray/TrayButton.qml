@@ -30,11 +30,13 @@ BarIconButton {
     }
 
     onClicked: {
-        // Use smart activate for problematic apps (Spotify, Discord, etc.)
-        // Falls back to normal activate() if not a known problematic app
-        // Use smart toggle for consistent behavior (focus/launch)
-        // Falls back to normal activate() if not handled
-        if (!TrayService.smartToggle(item)) {
+        // Keep smartActivate ONLY for known problematic apps (Spotify, Discord
+        // etc.). For everything else — especially multi-instance Wine apps —
+        // use the native SNI Activate path, which is instance-exact.
+        const appInfo = TrayService.getProblematicAppInfo(item);
+        if (appInfo) {
+            TrayService.smartActivate(item);
+        } else {
             item?.activate();
         }
     }

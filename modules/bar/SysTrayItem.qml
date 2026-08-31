@@ -24,11 +24,14 @@ MouseArea {
     onPressed: (event) => {
         switch (event.button) {
         case Qt.LeftButton: {
-            // Smart toggle: click to show, click again to minimize
-            // Falls back to normal activate() if not handled
-            if (!TrayService.smartToggle(item)) {
-                item.activate();
-            }
+            // Native path: SNI Activate -> xembedsniproxy -> exact XEmbed window.
+            // Instance-accurate for multi-instance Wine apps (e.g. multiple
+            // phBot clients); do NOT fuzzy-match toplevels here — all Wine
+            // windows share one appId, so that restores the wrong window.
+            item.activate();
+            // Learn icon->character identity (the restored window becomes
+            // active and its title carries the character name)
+            TrayService.learnIdentity(item);
             break;
         }
         case Qt.MiddleButton:
@@ -47,14 +50,37 @@ MouseArea {
     }
     onEntered: {
         if (!item) return;
-        const tooltipTitle = item.tooltipTitle ?? "";
-        const title = item.title ?? "";
-        const tooltipDescription = item.tooltipDescription ?? "";
-        
-        tooltip.text = tooltipTitle.length > 0 ? tooltipTitle
-                : (title.length > 0 ? title : "");
-        if (tooltip.text.length === 0) return;
-        if (tooltipDescription.length > 0) tooltip.text += " • " + tooltipDescription;
+        root.updateTooltip();
+    }
+
+    // Reactive tooltip: re-read SNI properties whenever the app (or Wine's
+    // xembedsniproxy) pushes a change over D-Bus — e.g. phBot updating the
+    // tray tooltip after a character logs in. Pure binding, no polling.
+    function updateTooltip() {
+        const tooltipTitle = item?.tooltipTitle ?? "";
+        const title = item?.title ?? "";
+        const tooltipDescription = item?.tooltipDescription ?? "";
+
+        const learned = TrayService.identityFor(item);
+        let text = learned.length > 0 ? ("phBot — " + learned)
+                : (tooltipTitle.length > 0 ? tooltipTitle
+                : (title.length > 0 ? title : ""));
+        if (text.length === 0) { tooltip.text = ""; return; }
+        if (!learned && tooltipDescription.length > 0) text += " • " + tooltipDescription;
+        tooltip.text = text;
+    }
+
+    Connections {
+        target: root.item
+        function onTooltipTitleChanged() { root.updateTooltip(); }
+        function onTooltipDescriptionChanged() { root.updateTooltip(); }
+        function onTitleChanged() { root.updateTooltip(); }
+    }
+
+    Connections {
+        // Refresh tooltip when a click-learned identity arrives
+        target: TrayService
+        function onTrayIdentitiesChanged() { root.updateTooltip(); }
     }
 
     // Listen for close signal from parent tray

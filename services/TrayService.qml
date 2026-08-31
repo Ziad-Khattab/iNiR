@@ -5,6 +5,7 @@ import qs.modules.common.functions
 import qs.services
 import qs.services.deferred
 import QtQuick
+import QtCore
 import Quickshell
 import Quickshell.Io
 import Quickshell.Services.SystemTray
@@ -172,8 +173,86 @@ Singleton {
         return item.icon ?? "";
     }
 
+    // ---- Wine multi-instance tray identity (patch module 04) ---------------
+    // Wine's systray host (explorer.exe) exposes NO per-client identity via
+    // xembedsniproxy (no ToolTip, empty Title, shared PID). The only moment
+    // icon<->window is knowable is on click: SNI Activate() restores the exact
+    // window, which becomes the active toplevel whose title holds the
+    // character name ("phBot v33.6.5 - <char> - Connected").
+    readonly property string identityPath: StandardPaths.writableLocation(StandardPaths.CacheLocation)
+        + "/inir-tray-identity.json"
+    property var trayIdentities: ({})
+    readonly property var phBotTitleRegex: /^phBot v[\d.]+ - (.+?) - /
+
+    FileView {
+        id: identityFile
+        path: root.identityPath
+        watchChanges: false
+        onLoaded: {
+            try { root.trayIdentities = JSON.parse(identityFile.text() || "{}"); }
+            catch (e) { root.trayIdentities = {}; }
+        }
+        onTextChanged: {
+            try { root.trayIdentities = JSON.parse(identityFile.text() || "{}"); }
+            catch (e) {}
+        }
+    }
+
+    function saveIdentities(): void {
+        identityFile.setText(JSON.stringify(root.trayIdentities));
+    }
+
+    // Wine/XEmbed items via xembedsniproxy: numeric id, empty title
+    function isWineTrayItem(item): bool {
+        return item && /^\d{6,}$/.test(item.id ?? "") && !(item.title ?? "").length;
+    }
+
+    // Call right after item.activate() — the restored window becomes active
+    function learnIdentity(item): void {
+        if (!item || !root.isWineTrayItem(item)) return;
+        identityLearnTimer.item = item;
+        identityLearnTimer.restart();
+    }
+
+    Timer {
+        id: identityLearnTimer
+        property var item: null
+        interval: 900
+        onTriggered: {
+            if (!item) return;
+            const m = (ToplevelManager.activeToplevel?.title ?? "").match(root.phBotTitleRegex);
+            if (m) {
+                var next = Object.assign({}, root.trayIdentities);
+                next[item.id] = m[1];
+                root.trayIdentities = next;
+                root.saveIdentities();
+            }
+        }
+    }
+
+    function identityFor(item): string {
+        return root.trayIdentities[item?.id ?? ""] ?? "";
+    }
+
+    // True when the learned character's client window is currently shown
+    // (exists as a toplevel and is not minimized). Used to hide its tray icon.
+    function identityWindowVisible(item): bool {
+        const charName = root.identityFor(item);
+        if (!charName) return false;
+        for (const tl of ToplevelManager.toplevels.values) {
+            const title = tl.title ?? "";
+            if (title.startsWith("phBot v") && title.includes(" - " + charName + " - ")) {
+                return !tl.minimized;
+            }
+        }
+        return false;
+    }
+
+    // Tooltip: learned character name first, then native SNI fields
     function getTooltipForItem(item) {
         if (!item) return "";
+        const learned = root.identityFor(item);
+        if (learned) return "phBot — " + learned;
         const tooltipTitle = item.tooltipTitle ?? "";
         const title = item.title ?? "";
         const id = item.id ?? "";
